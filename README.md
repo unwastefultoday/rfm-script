@@ -4,14 +4,28 @@ The pipeline is designed to run once per day using a scheduled job (cron / Task 
 **Logic Behind the script**
 
    a. The script connects to postresql database using the credentials mentioned in the .env file.
+                                 
+    import os
+    
+    import psycopg2
+    
+    from dotenv import load_dotenv
 
-   b. It then runs an sql script to calculate r,f and m factors for each customer. All three are integers ranging from 1 to 5. 
+    load_dotenv()
+
+    def get_connection():
+        return psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        port=os.getenv("DB_PORT"))
+
+   b. It then runs an sql script to calculate R (how recent was the last order date as compared to running date), F (Volume of Orders made by customer) and M (Value of Orders made by the customer.) factors for each customer. All three are integers ranging from 1 to 5. 
      
-      b.1 R - Recency i.e. how recent was the last order date as compared to running date. 1 is least recent and 5 is most recent.
-      
-      b.2 F - Frequency i.e. Volume of Orders made by customer.
 
-      b.3 M - Monetary i.e. Value of Orders made by the customer.
+
+   
 
    c. R, F and M values are then used to create dual level of segmentation. One is based on sum of these three factors while another assigns them characteristics based on individual values. This is done to increase scope of insights obtained from current customer base.
 
