@@ -3,7 +3,7 @@ The pipeline is designed to run once per day using a scheduled job (cron / Task 
 
 **Logic Behind the script**
 
-   a. The script connects to postresql database using the credentials mentioned in the .env file.
+   a. The script connects to postgresql database using the credentials mentioned in the .env file.
                                  
     import os
     
@@ -90,7 +90,41 @@ The pipeline is designed to run once per day using a scheduled job (cron / Task 
    
    c. R, F and M values are then used to create dual level of segmentation. One is based on sum of these three factors while another assigns them characteristics based on individual values. This is done to increase scope of insights obtained from current customer base. Lastly it upserts the values inside the customer_rfm_daily database. There is no manual intervention required for BAU use.
 
-      ere
+      def run_rfm_pipeline():
+
+    run_date = date.today()
+    conn = get_connection()
+
+    df = pd.read_sql(get_rfm_query(run_date), conn)
+
+    insert_query = """
+    INSERT INTO ecom.customer_rfm_daily (
+        run_date, customer_id, recency_days, frequency_orders,
+        monetary_value, r_score, f_score, m_score, rfm_score, rfm_segment
+    )
+    VALUES %s
+    ON CONFLICT (run_date, customer_id)
+    DO UPDATE SET
+        recency_days = EXCLUDED.recency_days,
+        frequency_orders = EXCLUDED.frequency_orders,
+        monetary_value = EXCLUDED.monetary_value,
+        r_score = EXCLUDED.r_score,
+        f_score = EXCLUDED.f_score,
+        m_score = EXCLUDED.m_score,
+        rfm_score = EXCLUDED.rfm_score,
+        rfm_segment = EXCLUDED.rfm_segment,
+        updated_at = CURRENT_TIMESTAMP;
+    """
+
+    records = df.to_records(index=False).tolist()
+    cursor = conn.cursor()
+    execute_values(cursor, insert_query, records)
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    print(f"Inserted {len(df)} RFM records for {run_date}")
    
 **Steps for Use**
 
