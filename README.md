@@ -23,13 +23,74 @@ The pipeline is designed to run once per day using a scheduled job (cron / Task 
 
    b. It then runs an sql script to calculate R (how recent was the last order date as compared to running date), F (Volume of Orders made by customer) and M (Value of Orders made by the customer.) factors for each customer. All three are integers ranging from 1 to 5. 
      
+      import pandas as pd
+      from datetime import date
+      from psycopg2.extras import execute_values
+      from database import get_connection
 
 
+      def get_rfm_query(run_date):
+
+          return f""" WITH base AS (
+            SELECT
+            customer_id,
+            MAX(created_at) AS last_order_date,
+            COUNT(order_id) AS frequency_orders,
+            SUM(total) AS monetary_value
+        FROM ecom.orders
+        WHERE status != 'cancelled'
+        GROUP BY customer_id
+    ),
+
+    rfm AS (
+        SELECT
+            customer_id,
+            DATE '{run_date}' AS run_date,
+            DATE_PART('day', DATE '{run_date}' - last_order_date::date) AS recency_days,
+            frequency_orders,
+            monetary_value
+        FROM base
+    ),
+
+    scored AS (
+        SELECT *,
+            NTILE(5) OVER (ORDER BY recency_days DESC) AS r_score,
+            NTILE(5) OVER (ORDER BY frequency_orders) AS f_score,
+            NTILE(5) OVER (ORDER BY monetary_value) AS m_score
+        FROM rfm
+    ),
+
+    segmented AS (
+        SELECT *,
+            (r_score + f_score + m_score) AS rfm_score,
+            CASE
+                WHEN r_score >= 4 AND f_score >= 4 AND m_score >= 4 THEN 'Champions'
+                WHEN f_score >= 4 AND m_score >= 4 THEN 'Loyal High Spenders'
+                WHEN f_score >= 4 AND m_score < 4 THEN 'Loyal Budget Spenders'
+                WHEN r_score <= 2 AND f_score > 3 THEN 'Loyal At Risk'
+                WHEN r_score <= 2 THEN 'At Risk'
+                ELSE 'Others'
+            END AS rfm_segment
+        FROM scored
+    )
+
+    SELECT
+        run_date,
+        customer_id,
+        recency_days,
+        frequency_orders,
+        monetary_value,
+        r_score,
+        f_score,
+        m_score,
+        rfm_score,
+        rfm_segment
+    FROM segmented;
+    """
    
+   c. R, F and M values are then used to create dual level of segmentation. One is based on sum of these three factors while another assigns them characteristics based on individual values. This is done to increase scope of insights obtained from current customer base. Lastly it upserts the values inside the customer_rfm_daily database. There is no manual intervention required for BAU use.
 
-   c. R, F and M values are then used to create dual level of segmentation. One is based on sum of these three factors while another assigns them characteristics based on individual values. This is done to increase scope of insights obtained from current customer base.
-
-   d. Lastly it upserts the values inside the customer_rfm_daily database. There is no manual intervention required for BAU use.
+      ere
    
 **Steps for Use**
 
